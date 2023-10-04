@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Example</title>
+</head>
+<body>
+    <div>
+        <label for="channelInput">Channel Name:</label>
+        <input type="text" id="channelInput" placeholder="Enter channel name">
+    </div>
+    <div>
+        <label for="typeInput">Message Type:</label>
+        <input type="text" id="typeInput" placeholder="Enter message type">
+    </div>
+    <div>
+        <label for="messageInput">Message:</label>
+        <input type="text" id="messageInput" placeholder="Enter message">
+    </div>
+    <button id="subscribeButton">Subscribe</button>
+    <button id="sendMessageButton">Send Message</button>
+    <div id="messages"></div>
+
+    <script src="../index.js"></script>
+    <script>
+        const lolInstance = new LOL({
+            API_KEY: 'API KEY',
+            API_SECRET: 'API SECRET',
+            TLS: false // true for wss://
+        });
+
+        const messagesDiv = document.getElementById('messages');
+        const channelInput = document.getElementById('channelInput');
+        const typeInput = document.getElementById('typeInput');
+        const messageInput = document.getElementById('messageInput');
+        const subscribeButton = document.getElementById('subscribeButton');
+        const sendMessageButton = document.getElementById('sendMessageButton');
+
+        subscribeButton.addEventListener('click', () => {
+            const channelName = channelInput.value;
+            if (channelName) {
+                const channelSubscription = lolInstance.subscribe(channelName);
+                channelSubscription.bind('msg', (content) => {
+                    const messageElement = document.createElement('div');
+                    messageElement.textContent = 'Received message: ' + content;
+                    messagesDiv.appendChild(messageElement);
+                    console.log(content)
+                });
+            }
+        });
+
+        sendMessageButton.addEventListener('click', () => {
+            const channelName = channelInput.value;
+            const messageType = typeInput.value;
+            const message = messageInput.value;
+            if (channelName && messageType && message) {
+                lolInstance.trigger(channelName, messageType, message);
+                messageInput.value = '';
+            }
+        });
+    </script>
+</body>
+</html>
