@@ -164,6 +164,8 @@ function LOL({ API_KEY, API_SECRET, TLS }) {
             if (!userId) {
                 this.socket.close();
             }
+            // storage the user id in localStorage as LOL_USER_ID
+            localStorage.setItem('LOL_USER_ID', userId);
         }
     };
 
