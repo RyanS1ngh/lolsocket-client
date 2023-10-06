@@ -126,16 +126,15 @@ function LOL({ API_KEY, API_SECRET, TLS }) {
     this.apiKey = API_KEY;
     this.apiSecret = API_SECRET;
     if (TLS) {
-        const url = `wss://ws.kolabi.pro:4000/${API_KEY}`;
+        const url = `wss://ws.lolcorp.co.uk:4000/${API_KEY}`;
         this.socket = new WebSocket(url);
     } else {
-        const url = `ws://ws.kolabi.pro:3000/${API_KEY}`;
+        const url = `ws://ws.lolcorp.co.uk:3000/${API_KEY}`;
         this.socket = new WebSocket(url);
     }
 
     this.socket.onerror = (error) => {
         console.log('disconnected');
-        this.socket = new WebSocket(`wss://ws.kolabi.pro:3000/${API_KEY}`);
     };
 
     this.socket.onopen = () => {
