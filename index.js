@@ -138,7 +138,11 @@ function LOL({ API_KEY, API_SECRET, TLS }) {
     };
 
     this.socket.onopen = () => {
-        console.log('connected');
+        // send a message type connected to the server
+        const data = {
+            type: 'connected'
+        };
+        this.socket.send(JSON.stringify(data));
     };
 
     this.channels = {};
