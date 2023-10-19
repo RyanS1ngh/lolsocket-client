@@ -120,122 +120,113 @@
     }
 
 })));
-//# sourceMappingURL=jwt-decode.js.map
+class LOL {
+    constructor({ API_KEY, API_SECRET, TLS }) {
+        this.apiKey = API_KEY;
+        this.apiSecret = API_SECRET;
+        this.TLS = TLS;
+        this.channels = {};
+        this.userID = null;
 
-function LOL({ API_KEY, API_SECRET, TLS }) {
-    this.apiKey = API_KEY;
-    this.apiSecret = API_SECRET;
-    if (TLS) {
-        const url = `wss://ws.lolcorp.co.uk:4000/${API_KEY}`;
-        this.socket = new WebSocket(url);
-    } else {
-        const url = `ws://ws.lolcorp.co.uk:3000/${API_KEY}`;
-        this.socket = new WebSocket(url);
+        this.socket = null;
     }
 
-    this.socket.onerror = (error) => {
-        console.log('disconnected');
-    };
-
-    this.socket.onopen = () => {
-        // send a message type connected to the server
-        const data = {
-            type: 'connected'
-        };
-        this.socket.send(JSON.stringify(data));
-    };
-
-    this.channels = {};
-
-    this.socket.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        const { type, channel, content } = data;
-        if (type === 'message') {
-            if (this.channels[channel]) {
-                this.channels[channel].forEach((callback) => {
-                    callback(content);
-                });
-            }
-        }
-
-        if (type === 'token') {
-            this.token = data.token;
-            // jwt decode
-            const decoded = jwt_decode(data.token);
-            const userId = decoded.userId;
-            this.userID = userId;
-            console.log('userId', userId)
-            if (!userId) {
-                this.socket.close();
-            }
-            // storage the user id in localStorage as LOL_USER_ID
-            localStorage.setItem('LOL_USER_ID', userId);
-        }
-    };
-
-    this.subscribe = (channel) => {
-        const channelKey = `${this.apiKey}-${channel}`;
-        const data = {
-            type: 'subscribe',
-            channel: channel,
-            secret: this.apiSecret,
-            token: this.token
-        };
-        this.socket.send(JSON.stringify(data));
-
-        if (!this.channels[channelKey]) {
-            this.channels[channelKey] = [];
-        }
-
-        return {
-            bind: (type, callback) => {
-                this.channels[channelKey].push({
-                    type: type,
-                    callback: callback
-                });
-
-                this.socket.onmessage = (event) => {
-                    const parsedMessage = JSON.parse(event.data);
-                    const messageType = parsedMessage.emit_type;
-                    const messageData = parsedMessage.content;
-
-                    this.channels[channelKey].forEach(subscription => {
-                        if (subscription.type === messageType) {
-                            subscription.callback(messageData);
-                        }
-                    });
+    async connect() {
+        const protocol = this.TLS ? 'wss' : 'ws';
+        const port = this.TLS ? 4000 : 3000;
+        const url = `${protocol}://ws.lolcorp.co.uk:${port}/${this.apiKey}`;
+        return new Promise((resolve, reject) => {
+            this.socket = new WebSocket(url);
+            this.socket.onopen = () => {
+                // send a message type connected to the server
+                const data = {
+                    type: 'connected'
                 };
-            }
-        };
-    };
+                this.socket.send(JSON.stringify(data));
+                resolve();
+            };
 
-    this.trigger = (channel, type, message) => {
-        const isClient = channel.startsWith('client-');
-        this.subscribe(channel);
-        if (isClient) {
+            this.socket.onerror = (error) => {
+                reject(new Error('WebSocket connection failed.'));
+            };
+
+            this.socket.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                const { type, channel, content } = data;
+                if (type === 'message') {
+                    if (this.channels[channel]) {
+                        this.channels[channel].forEach((callback) => {
+                            callback(content);
+                        });
+                    }
+                }
+
+                if (type === 'token') {
+                    this.token = data.token;
+                    // jwt decode
+                    const decoded = jwt_decode(data.token);
+                    const userId = decoded.userId;
+                    this.userID = userId;
+                    console.log('userId', userId);
+                    if (!userId) {
+                        this.socket.close();
+                    }
+                    // store the user id in localStorage as LOL_USER_ID
+                    localStorage.setItem('LOL_USER_ID', userId);
+                }
+            };
+        });
+    }
+
+    subscribe(channel) {
+        return new Promise((resolve, reject) => {
+            const channelKey = `${this.apiKey}-${channel}`;
             const data = {
-                type: 'client-publish',
-                emit_type: type,
+                type: 'subscribe',
                 channel: channel,
-                content: message,
                 secret: this.apiSecret,
-                userId: this.userID,
                 token: this.token
             };
             this.socket.send(JSON.stringify(data));
-        } else if (!isClient) {
-            const data = {
-                type: 'publish',
-                emit_type: type,
-                channel: channel,
-                content: message,
-                secret: this.apiSecret,
-                userId: this.userID,
-                token: this.token
-            };
-            this.socket.send(JSON.stringify(data));
-        }
-    };
+
+            if (!this.channels[channelKey]) {
+                this.channels[channelKey] = [];
+            }
+
+            resolve({
+                bind: (type, callback) => {
+                    this.channels[channelKey].push({
+                        type: type,
+                        callback: callback
+                    });
+                    // No need to modify onmessage here, already handled during socket initialization.
+                }
+            });
+        });
+    }
+
+    trigger(channel, type, message) {
+        return new Promise((resolve, reject) => {
+            const isClient = channel.startsWith('client-');
+            this.subscribe(channel)
+                .then(() => {
+                    const data = {
+                        type: isClient ? 'client-publish' : 'publish',
+                        emit_type: type,
+                        channel: channel,
+                        content: message,
+                        secret: this.apiSecret,
+                        userId: this.userID,
+                        token: this.token
+                    };
+                    this.socket.send(JSON.stringify(data));
+                    resolve();
+                })
+                .catch((error) => {
+                    reject(error);
+                });
+        });
+    }
 }
 
 module.exports = LOL;
