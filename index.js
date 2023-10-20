@@ -1,7 +1,8 @@
 (function (factory) {
     typeof define === 'function' && define.amd ? define(factory) :
-    factory();
-}((function () { 'use strict';
+        factory();
+}((function () {
+    'use strict';
 
     /**
      * The code was extracted from:
@@ -31,12 +32,12 @@
             (buffer = str.charAt(idx++));
             // character found in table? initialize bit storage and add its ascii value;
             ~buffer &&
-            ((bs = bc % 4 ? bs * 64 + buffer : buffer),
-                // and if not first of each 4 characters,
-                // convert the first 8 bits to one ascii character
-                bc++ % 4) ?
-            (output += String.fromCharCode(255 & (bs >> ((-2 * bc) & 6)))) :
-            0
+                ((bs = bc % 4 ? bs * 64 + buffer : buffer),
+                    // and if not first of each 4 characters,
+                    // convert the first 8 bits to one ascii character
+                    bc++ % 4) ?
+                (output += String.fromCharCode(255 & (bs >> ((-2 * bc) & 6)))) :
+                0
         ) {
             // try to find character in table (0-63, not found => -1)
             buffer = chars.indexOf(buffer);
@@ -47,11 +48,11 @@
     var atob = (typeof window !== "undefined" &&
         window.atob &&
         window.atob.bind(window)) ||
-    polyfill;
+        polyfill;
 
     function b64DecodeUnicode(str) {
         return decodeURIComponent(
-            atob(str).replace(/(.)/g, function(m, p) {
+            atob(str).replace(/(.)/g, function (m, p) {
                 var code = p.charCodeAt(0).toString(16).toUpperCase();
                 if (code.length < 2) {
                     code = "0" + code;
@@ -111,7 +112,7 @@
     //use amd or just through the window object.
     if (window) {
         if (typeof window.define == "function" && window.define.amd) {
-            window.define("jwt_decode", function() {
+            window.define("jwt_decode", function () {
                 return jwtDecode;
             });
         } else if (window) {
@@ -120,35 +121,44 @@
     }
 
 })));
+/* 
+    Prepare for a LOL
+ */
 class LOL {
-    constructor({ API_KEY, API_SECRET, TLS }) {
+    constructor({ API_KEY, TLS }) {
         this.apiKey = API_KEY;
-        this.apiSecret = API_SECRET;
-        this.TLS = TLS;
-        this.channels = {};
-        this.userID = null;
-
         this.socket = null;
-    }
 
-    async connect() {
-        const protocol = this.TLS ? 'wss' : 'ws';
-        const port = this.TLS ? 4000 : 3000;
-        const url = `${protocol}://ws.lolcorp.co.uk:${port}/${this.apiKey}`;
-        return new Promise((resolve, reject) => {
-            this.socket = new WebSocket(url);
-            this.socket.onopen = () => {
-                // send a message type connected to the server
-                const data = {
-                    type: 'connected'
-                };
-                this.socket.send(JSON.stringify(data));
-                resolve();
-            };
+        if(!LOL.socketCreated) {
+            connectToWebSocket();
+            LOL.socketCreated = true;
+        }else{
+            console.log('socket already created')
+        }
+
+
+        const connectToWebSocket = () => {
+            if (TLS) {
+                const url = `wss://ws.lolcorp.co.uk:4000/${API_KEY}`;
+                this.socket = new WebSocket(url);
+            } else {
+                const url = `ws://ws.lolcorp.co.uk:3000/${API_KEY}`;
+                this.socket = new WebSocket(url);
+            }
 
             this.socket.onerror = (error) => {
-                reject(new Error('WebSocket connection failed.'));
+                console.log('disconnected');
             };
+
+            this.socket.onopen = () => {
+                console.log('connected');
+                this.onSocketOpen();
+            };
+        };
+
+
+        this.onSocketOpen = () => {
+            this.channels = {};
 
             this.socket.onmessage = (event) => {
                 const data = JSON.parse(event.data);
@@ -175,12 +185,29 @@ class LOL {
                     localStorage.setItem('LOL_USER_ID', userId);
                 }
             };
-        });
+        };
     }
 
     subscribe(channel) {
-        return new Promise((resolve, reject) => {
-            const channelKey = `${this.apiKey}-${channel}`;
+        const channelKey = `${this.apiKey}-${channel}`;
+    
+        if (this.socket.readyState !== WebSocket.OPEN) {
+            console.error('Socket connection not open. Waiting for connection...');
+            // Wait for the socket to open before subscribing
+            this.socket.addEventListener('open', () => {
+                const data = {
+                    type: 'subscribe',
+                    channel: channel,
+                    secret: this.apiSecret,
+                    token: this.token
+                };
+                this.socket.send(JSON.stringify(data));
+    
+                if (!this.channels[channelKey]) {
+                    this.channels[channelKey] = [];
+                }
+            });
+        } else {
             const data = {
                 type: 'subscribe',
                 channel: channel,
@@ -188,45 +215,58 @@ class LOL {
                 token: this.token
             };
             this.socket.send(JSON.stringify(data));
-
+    
             if (!this.channels[channelKey]) {
                 this.channels[channelKey] = [];
             }
-
-            resolve({
-                bind: (type, callback) => {
-                    this.channels[channelKey].push({
-                        type: type,
-                        callback: callback
-                    });
-                    // No need to modify onmessage here, already handled during socket initialization.
-                }
-            });
-        });
+        }
+    
+        return {
+            bind: (type, callback) => {
+                this.channels[channelKey].push({
+                    type: type,
+                    callback: callback
+                });
+            }
+        };
     }
+    
 
     trigger(channel, type, message) {
-        return new Promise((resolve, reject) => {
-            const isClient = channel.startsWith('client-');
-            this.subscribe(channel)
-                .then(() => {
-                    const data = {
-                        type: isClient ? 'client-publish' : 'publish',
-                        emit_type: type,
-                        channel: channel,
-                        content: message,
-                        secret: this.apiSecret,
-                        userId: this.userID,
-                        token: this.token
-                    };
-                    this.socket.send(JSON.stringify(data));
-                    resolve();
-                })
-                .catch((error) => {
-                    reject(error);
-                });
-        });
+        if (this.socket.readyState !== WebSocket.OPEN) {
+            console.error('Socket connection not open. Unable to trigger.');
+            return;
+        }
+
+        const isClient = channel.startsWith('client-');
+        this.subscribe(channel);
+        if (isClient) {
+            const data = {
+                type: 'client-publish',
+                emit_type: type,
+                channel: channel,
+                content: message,
+                secret: this.apiSecret,
+                userId: this.userID,
+                token: this.token
+            };
+            this.socket.send(JSON.stringify(data));
+        } else if (!isClient) {
+            const data = {
+                type: 'publish',
+                emit_type: type,
+                channel: channel,
+                content: message,
+                secret: this.apiSecret,
+                userId: this.userID,
+                token: this.token
+            };
+            this.socket.send(JSON.stringify(data));
+        }
     }
 }
 
-module.exports = LOL;
+LOL.socketCreated = false;
+
+export default LOL;
+
